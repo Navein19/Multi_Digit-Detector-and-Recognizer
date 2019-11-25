@@ -1,0 +1,533 @@
+
+# coding: utf-8
+
+# # MNIST with CNN
+
+# In[1]:
+
+
+import tensorflow as tf
+import matplotlib.pyplot as plt
+
+get_ipython().run_line_magic('matplotlib', 'inline')
+
+
+# In[2]:
+
+
+from tensorflow.examples.tutorials.mnist import input_data
+
+
+# In[3]:
+
+
+mnist = input_data.read_data_sets("MNIST_data/",one_hot=True)
+
+
+# ### Helper Functions
+
+# Function to help intialize random weights for fully connected or convolutional layers, we leave the shape attribute as a parameter for this.
+
+# In[4]:
+
+
+def init_weights(shape):
+    init_random_dist = tf.truncated_normal(shape, stddev=0.1)
+    return tf.Variable(init_random_dist)
+
+
+# Same as init_weights, but for the biases
+
+# In[5]:
+
+
+def init_bias(shape):
+    init_bias_vals = tf.constant(0.1, shape=shape)
+    return tf.Variable(init_bias_vals)
+
+
+# Create a 2D convolution using builtin conv2d from TF. From those docs:
+# 
+# Computes a 2-D convolution given 4-D `input` and `filter` tensors.
+# 
+# Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
+# and a filter / kernel tensor of shape
+# `[filter_height, filter_width, in_channels, out_channels]`, this op
+# performs the following:
+# 
+# 1. Flattens the filter to a 2-D matrix with shape
+#    `[filter_height * filter_width * in_channels, output_channels]`.
+# 2. Extracts image patches from the input tensor to form a *virtual*
+#    tensor of shape `[batch, out_height, out_width,
+#    filter_height * filter_width * in_channels]`.
+# 3. For each patch, right-multiplies the filter matrix and the image patch
+#    vector.
+# 
+
+# In[6]:
+
+
+def conv2d(x, W):
+    return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+
+
+# Create a max pooling layer, again using built in TF functions:
+# 
+# Performs the max pooling on the input.
+# 
+#     Args:
+#       value: A 4-D `Tensor` with shape `[batch, height, width, channels]` and
+#         type `tf.float32`.
+#       ksize: A list of ints that has length >= 4.  The size of the window for
+#         each dimension of the input tensor.
+#       strides: A list of ints that has length >= 4.  The stride of the sliding
+#         window for each dimension of the input tensor.
+#       padding: A string, either `'VALID'` or `'SAME'`. 
+
+# In[7]:
+
+
+def max_pool_2by2(x):
+    return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
+                          strides=[1, 2, 2, 1], padding='SAME')
+
+
+# Using the conv2d function, we'll return an actual convolutional layer here that uses an ReLu activation.
+
+# In[1]:
+
+
+def convolutional_layer(input_x, shape):
+    W = init_weights(shape)
+    b = init_bias([shape[3]])
+    return tf.nn.relu(conv2d(input_x, W) + b)
+
+
+# This is a normal fully connected layer
+
+# In[9]:
+
+
+def normal_full_layer(input_layer, size):
+    input_size = int(input_layer.get_shape()[1])
+    W = init_weights([input_size, size])
+    b = init_bias([size])
+    return tf.matmul(input_layer, W) + b
+
+
+# ### Placeholders
+
+# In[10]:
+
+
+x = tf.placeholder(tf.float32,shape=[None,784])
+
+
+# In[11]:
+
+
+y_true = tf.placeholder(tf.float32,shape=[None,10])
+
+
+# ### Layers
+
+# In[12]:
+
+
+x_image = tf.reshape(x,[-1,28,28,1])
+
+
+# In[13]:
+
+
+# Using a 6by6 filter here, used 5by5 in video, you can play around with the filter size
+# You can change the 32 output, that essentially represents the amount of filters used
+# You need to pass in 32 to the next input though, the 1 comes from the original input of 
+# a single image.
+convo_1 = convolutional_layer(x_image,shape=[6,6,1,32])
+convo_1_pooling = max_pool_2by2(convo_1)
+
+
+# In[14]:
+
+
+# Using a 6by6 filter here, used 5by5 in video, you can play around with the filter size
+# You can actually change the 64 output if you want, you can think of that as a representation
+# of the amount of 6by6 filters used.
+convo_2 = convolutional_layer(convo_1_pooling,shape=[6,6,32,64])
+convo_2_pooling = max_pool_2by2(convo_2)
+
+
+# In[15]:
+
+
+# Why 7 by 7 image? Because we did 2 pooling layers, so (28/2)/2 = 7
+# 64 then just comes from the output of the previous Convolution
+convo_2_flat = tf.reshape(convo_2_pooling,[-1,7*7*64])
+full_layer_one = tf.nn.relu(normal_full_layer(convo_2_flat,1024))
+
+
+# In[16]:
+
+
+# NOTE THE PLACEHOLDER HERE!
+hold_prob = tf.placeholder(tf.float32)
+full_one_dropout = tf.nn.dropout(full_layer_one,keep_prob=hold_prob)
+
+
+# In[17]:
+
+
+y_pred = normal_full_layer(full_one_dropout,10)
+
+
+# ### Loss Function
+
+# In[18]:
+
+
+cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true,logits=y_pred))
+
+
+# ### Optimizer
+
+# In[19]:
+
+
+optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
+train = optimizer.minimize(cross_entropy)
+
+
+# ### Intialize Variables
+
+# In[20]:
+
+
+init = tf.global_variables_initializer()
+
+
+
+
+
+
+            
+
+
+
+# ### Session
+
+# In[21]:
+
+
+import math
+import cv2
+import numpy as np
+from  scipy import ndimage
+import matplotlib.pyplot as plt
+
+
+
+
+img=cv2.imread("i.jpg")
+img_hsv=cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+# lower mask (0-10)
+lower_red = np.array([0,50,50])
+upper_red = np.array([10,255,255])
+mask0 = cv2.inRange(img_hsv, lower_red, upper_red)
+
+# upper mask (170-180)
+lower_red = np.array([170,50,50])
+upper_red = np.array([180,255,255])
+mask1 = cv2.inRange(img_hsv, lower_red, upper_red)
+
+# join my masks
+mask = mask0+mask1
+
+
+# set my output img to zero everywhere except my mask
+output_img = img.copy()
+output_img[np.where(mask==0)] = 0
+
+# or your HSV image, which I *believe* is what you want
+output_hsv = img_hsv.copy()
+output_hsv[np.where(mask==0)] = 0
+
+
+majorcontours=[]
+output_img=cv2.cvtColor(output_img, cv2.COLOR_BGR2GRAY)
+
+contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+i=0
+
+for contour in contours:
+    
+    
+    area=cv2.contourArea(contour)
+    
+    if(area>300 ):
+        
+        majorcontours.append(contour)
+        i=i+1
+        cv2.drawContours(img, contour, -1, (255,0,0), 3)
+    
+contour1=np.array(majorcontours[0])
+
+print(i)
+
+contourm1=np.zeros((contour1.shape[0],2))
+
+for i in range(0,contour1.shape[0]):
+    for j in range(0,2):
+        contourm1[i][j]=contour1[i][0][j]
+        
+
+minx1=contourm1[contourm1[:,0].argmin()][0]  
+miny1=contourm1[contourm1[:,1].argmin()][1]  
+
+
+maxx1=contourm1[contourm1[:,0].argmax()][0]  
+maxy1=contourm1[contourm1[:,1].argmax()][1] 
+
+
+
+
+d1=output_img[int(miny1)-25:int(maxy1)+25,int(minx1)-25:int(maxx1)+25]
+
+#idhu yedhukuna slicing array crates refernce so to create individual copy we use copy()
+output_img2=output_img.copy() 
+
+d1[0:,0:25]=0
+d1[0:,-25:]=0
+
+
+
+
+contour2=np.array(majorcontours[1])
+
+contourm2=np.zeros((contour2.shape[0],2))
+
+for i in range(0,contour2.shape[0]):
+    for j in range(0,2):
+        contourm2[i][j]=contour2[i][0][j]
+        
+        
+minx2=contourm2[contourm2[:,0].argmin()][0]  
+miny2=contourm2[contourm2[:,1].argmin()][1]  
+
+
+maxx2=contourm2[contourm2[:,0].argmax()][0]  
+maxy2=contourm2[contourm2[:,1].argmax()][1] 
+
+
+d2=output_img2[int(miny2)-25:int(maxy2)+25,int(minx2)-25:int(maxx2)+25]
+
+
+
+d2[0:,0:25]=0
+d2[0:,-25:]=0
+
+plt.imshow(d2)
+
+if(minx1>minx2):
+    temp=d1
+    d1=d2
+    d2=temp
+    
+
+
+gray1=d1
+
+#plt.imshow(d1)
+
+gray1 = cv2.resize(255-gray1, (28, 28))
+
+thresh, gray1 = cv2.threshold(gray1,200, 255, cv2.THRESH_TOZERO_INV)
+
+
+
+while np.sum(gray1[0]) == 0:
+    gray1 = gray1[1:]
+
+while np.sum(gray1[:,0]) == 0:
+    gray1 = np.delete(gray1,0,1)
+
+while np.sum(gray1[-1]) == 0:
+    gray1 = gray1[:-1]
+
+while np.sum(gray1[:,-1]) == 0:
+    gray1 = np.delete(gray1,-1,1)
+
+rows,cols = gray1.shape
+
+
+
+if rows > cols:
+    factor = 20.0/rows
+    rows = 20
+    cols = int(round(cols*factor))
+    gray1 = cv2.resize(gray1, (cols,rows))
+else:
+    factor = 20.0/cols
+    cols = 20
+    rows = int(round(rows*factor))
+    gray1 = cv2.resize(gray1, (cols, rows))
+    
+    
+    
+    
+colsPadding = (int(math.ceil((28-cols)/2.0)),int(math.floor((28-cols)/2.0)))
+rowsPadding = (int(math.ceil((28-rows)/2.0)),int(math.floor((28-rows)/2.0)))
+gray1 = np.lib.pad(gray1,(rowsPadding,colsPadding),'constant')
+
+
+def getBestShift(img):
+    cy,cx = ndimage.measurements.center_of_mass(img)
+
+    rows,cols = img.shape
+    shiftx = np.round(cols/2.0-cx).astype(int)
+    shifty = np.round(rows/2.0-cy).astype(int)
+
+    return shiftx,shifty
+
+
+
+def shift(img,sx,sy):
+    rows,cols = img.shape
+    M = np.float32([[1,0,sx],[0,1,sy]])
+    shifted = cv2.warpAffine(img,M,(cols,rows))
+    return shifted
+
+
+
+gray1 = np.lib.pad(gray1,(rowsPadding,colsPadding),'constant')
+
+
+shiftx,shifty = getBestShift(gray1)
+shifted = shift(gray1,shiftx,shifty)
+gray1 = shifted
+
+
+
+gray1 = cv2.resize(gray1, (28, 28))
+
+gray1=gray1/255
+
+gray2=d2
+
+gray2 = cv2.resize(255-gray2, (28, 28))
+
+thresh, gray2 = cv2.threshold(gray2,200, 255, cv2.THRESH_TOZERO_INV)
+
+
+
+while np.sum(gray2[0]) == 0:
+    gray2 = gray2[1:]
+
+while np.sum(gray2[:,0]) == 0:
+    gray2 = np.delete(gray2,0,1)
+
+while np.sum(gray2[-1]) == 0:
+    gray2 = gray2[:-1]
+
+while np.sum(gray2[:,-1]) == 0:
+    gray2 = np.delete(gray2,-1,1)
+
+rows,cols = gray2.shape
+
+
+
+if rows > cols:
+    factor = 20.0/rows
+    rows = 20
+    cols = int(round(cols*factor))
+    gray2 = cv2.resize(gray2, (cols,rows))
+else:
+    factor = 20.0/cols
+    cols = 20
+    rows = int(round(rows*factor))
+    gray2 = cv2.resize(gray2, (cols, rows))
+    
+    
+    
+    
+colsPadding = (int(math.ceil((28-cols)/2.0)),int(math.floor((28-cols)/2.0)))
+rowsPadding = (int(math.ceil((28-rows)/2.0)),int(math.floor((28-rows)/2.0)))
+gray2 = np.lib.pad(gray2,(rowsPadding,colsPadding),'constant')
+
+
+def getBestShift(img):
+    cy,cx = ndimage.measurements.center_of_mass(img)
+
+    rows,cols = img.shape
+    shiftx = np.round(cols/2.0-cx).astype(int)
+    shifty = np.round(rows/2.0-cy).astype(int)
+
+    return shiftx,shifty
+
+
+
+def shift(img,sx,sy):
+    rows,cols = img.shape
+    M = np.float32([[1,0,sx],[0,1,sy]])
+    shifted = cv2.warpAffine(img,M,(cols,rows))
+    return shifted
+
+
+
+gray2 = np.lib.pad(gray2,(rowsPadding,colsPadding),'constant')
+
+
+shiftx,shifty = getBestShift(gray2)
+shifted = shift(gray2,shiftx,shifty)
+gray2 = shifted
+
+
+
+gray2 = cv2.resize(gray2, (28, 28))
+
+gray2=gray2/255
+
+
+
+
+
+
+
+
+
+
+
+
+
+steps = 1000
+a=np.array([0,1,0,0,0,0,0,0,0,0])
+
+plt.imshow(gray2)
+
+
+with tf.Session() as sess:
+    
+    sess.run(init)
+    
+    for i in range(steps):
+        
+        batch_x , batch_y = mnist.train.next_batch(50)
+        
+        sess.run(train,feed_dict={x:batch_x,y_true:batch_y,hold_prob:0.5})
+        
+    
+    
+    print(sess.run(y_pred,feed_dict={x:gray1.reshape(1,784),y_true:a.reshape(1,10),hold_prob:1.0}))
+
+    print('\n')
+    print(sess.run(y_pred,feed_dict={x:gray2.reshape(1,784),y_true:a.reshape(1,10),hold_prob:1.0}))
+    
+    
+     
+    
+    
+        
+    
+        
+        
